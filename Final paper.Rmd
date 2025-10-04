@@ -1,0 +1,368 @@
+---
+title: 'Final Paper'
+subtitle: 'Balancing Wings and Weight: 
+An Exploratory Data Analysis of Aerospace Structural Design'
+author: "Saher Fatima Khalid"
+date: "2025-09-29"
+output: ioslides_presentation
+---
+
+## Executive Summary
+
+- This project investigates the critical relationship between structural design choices in aerospace engineering and their measurable impact on operational performance. 
+
+- Using a curated dataset of 300 aircraft design records, we explore how material type, wing span, fuselage length, load distribution, vibration damping, and weight efficiency interact to influence durability, altitude capability, and operational life.
+
+- Our central research question is: How do material and geometry choices influence the efficiency, stability, and longevity of aerospace structures?
+
+## Executive Summary
+To address this, we apply a structured analytical approach:
+
+1. Exploratory Data Analysis (EDA) to identify baseline patterns and variability across material types.
+2. Statistical Testing to validate whether observed differences in performance metrics are significant across material and geometry groups.
+3. Machine Learning to model durability and operational life, highlighting which structural factors drive long-term performance.
+4. Engineering Interpretation to connect analytical findings with aeronautical principles, bridging data-driven results with real-world aerospace design considerations.
+
+## Executive Summary 
+- This study contributes dual value: it reinforces engineering intuition (e.g., the trade-off between weight efficiency and durability across materials), while also demonstrating how modern analytics can support data-driven decision-making in aerospace design.
+
+- By the end of the analysis, we aim to deliver not only statistical insights but also a narrative that illustrates the delicate balance of wings, weight, and material strength that underpins safe and efficient flight.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+```
+## Data Preparation
+
+```{r}
+# load the dataset
+data <- read_csv('aero.csv')
+```
+ 
+```{r}
+# view the dataset
+head(data)
+```
+
+
+```{r}
+aero_col<- c('Material Type', 'Wing Span (m)', 'Fuselage Length (m)',
+                'Load Distribution', 'Vibration Damping', 'Weight Efficiency',
+                'Operational Life (years)', 'Durability', 'Altitude (m)')
+# Keep only those columns (if present)
+temp <- data %>% select(any_of(aero_col))
+```
+
+
+```{r}
+# Converting categorical columns to factors
+temp <- temp %>%
+  mutate(across(where(is.character), ~ str_trim(.x))) %>%
+  mutate(
+    `Material Type` = factor(`Material Type`),
+    `Load Distribution` = factor(`Load Distribution`, levels = c("point load", "distributed", "uniform")),
+    `Vibration Damping` = factor(`Vibration Damping`, levels = c("Low", "Moderate", "High")),
+    `Weight Efficiency` = factor(`Weight Efficiency`, levels = c("Poor", "Good", "Excellent"), ordered = TRUE),
+    `Durability` = factor(`Durability`, levels = c("Low", "Medium", "High"), ordered = TRUE)
+  )
+```
+
+## Feature engineering
+- wing to fuselage — this ratio is an interpretable engineering feature.
+
+- wing span relative to fuselage length can influence structural loads, aerodynamic efficiency, and hence weight trade-offs. 
+
+- We also create quantile bins to use in grouped displays.
+
+
+```{r}
+temp <- temp %>%
+  mutate(
+    wing_to_fuselage = `Wing Span (m)` / `Fuselage Length (m)`,
+    wing_to_fuselage_quartile = ntile(wing_to_fuselage, 4) %>% factor(labels = c("Q1","Q2","Q3","Q4"))
+  )
+```
+ 
+```{r}
+# Quick summaries 
+n_rows <- nrow(temp)
+material_counts <- temp %>% count(`Material Type`) %>% arrange(desc(n))
+summary_stats <- temp %>%
+  summarize(
+    mean_wing = mean(`Wing Span (m)`, na.rm = TRUE),
+    sd_wing = sd(`Wing Span (m)`, na.rm = TRUE),
+    mean_fuse = mean(`Fuselage Length (m)`, na.rm = TRUE),
+    mean_alt = mean(`Altitude (m)`, na.rm = TRUE),
+    mean_life = mean(`Operational Life (years)`, na.rm = TRUE)
+  )
+```
+
+## Visualization - 1
+```{r}
+# Wing Span vs Fuselage Length
+ggplot(temp, 
+       aes(x = `Fuselage Length (m)`, y = `Wing Span (m)`, color = `Material Type`)) +
+  geom_point(alpha = 0.7, size = 2) +
+  labs(
+    title = "Geometry Relationship: Wing Span vs Fuselage Length",
+    subtitle = "Examining whether structural dimensions scale differently across materials",
+    x = "Fuselage Length (m)", y = "Wing Span (m)"
+  ) +
+  theme_minimal()
+
+```
+
+## Wing Span vs Fuselage Length
+
+- A strong positive correlation suggests consistent scaling across designs.
+
+- Composite materials cluster at higher span-to-length ratios, reflecting lightweight strength advantages.
+
+- Metallic structures show more conservative scaling (shorter wings for a given fuselage length).
+
+## Visualization - 2
+
+```{r}
+# Wing-to-Fuselage Ratio by Material
+ggplot(temp, 
+       aes(x = `Material Type`, y = wing_to_fuselage, fill = `Material Type`)) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.8) +
+  labs(
+    title = "Wing-to-Fuselage Ratio Across Materials",
+    subtitle = "Comparing relative design balance between wing span and fuselage length",
+    y = "Wing/Fuselage Ratio", x = "Material Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+## Wing-to-Fuselage Ratio Across Materials
+
+- Composite materials exhibit higher median ratios, enabling longer, slender wings.
+
+- Metallic materials are tightly clustered with lower ratios → traditional load-bearing limits.
+
+- Hybrid designs (if present) bridge the gap, offering balanced geometry.
+
+## Visualization - 3
+
+```{r}
+# 3. Operational Life vs Altitude
+ggplot(temp, 
+       aes(x = `Altitude (m)`, y = `Operational Life (years)`, color = `Material Type`)) +
+  geom_point(alpha = 0.7, size = 2) +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(
+    title = "Performance Tradeoff: Operational Life vs Altitude",
+    subtitle = "Does higher altitude capability come at the cost of reduced durability?",
+    x = "Altitude (m)", y = "Operational Life (years)"
+  ) +
+  theme_minimal()
+
+```
+
+## Operational Life vs Altitude
+
+- Higher altitude performance often associates with shorter operational life (trade-off effect).
+
+- Composites sustain higher altitudes but show variability in long-term durability.
+
+- Metallic structures perform reliably at moderate altitudes with steadier lifespans.
+
+## Visualization - 4:
+```{r}
+# Average Operational Life by Material
+temp %>%
+  group_by(`Material Type`) %>%
+  summarize(mean_life = mean(`Operational Life (years)`, na.rm = TRUE)) %>%
+  ggplot(aes(x = reorder(`Material Type`, -mean_life), y = mean_life, fill = `Material Type`)) +
+  geom_col(alpha = 0.8) +
+  labs(
+    title = "Material Choice and Durability",
+    subtitle = "Average operational life expectancy varies significantly by material",
+    y = "Mean Operational Life (years)", x = "Material Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+## 4. Material Choice and Durability
+
+- Average operational life clearly depends on material type.
+
+- Composites tend to maximize life expectancy, though variability must be noted.
+
+- Traditional metals underperform in lifespan compared to newer materials.
+
+
+## Visualization - 5
+
+```{r}
+# Histogram: Wing Span distribution faceted by Material
+ggplot(temp, 
+       aes(x = `Wing Span (m)`)) +
+  geom_histogram(bins = 20, fill = "skyblue", alpha = 0.7, color = "white") +
+  facet_wrap(~ `Material Type`, scales = "free_y") +
+  labs(
+    title = "Distribution of Wing Span by Material",
+    subtitle = "Faceted histograms highlight how span varies across materials",
+    x = "Wing Span (m)",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+```
+
+##  Wing Span distribution faceted by Material
+
+- Carbon Fiber designs skew toward larger wing spans, reflecting lightweight structural capability.
+
+- Aluminum designs are clustered at shorter spans, consistent with traditional aircraft structures.
+
+- Titanium spans are spread across a wider range, reflecting mixed-use design strategies.
+
+- Engineering implication: choice of material directly shapes feasible design envelopes for wing span.
+
+## Visualization - 6
+
+```{r}
+library(corrplot)
+
+# Select numeric columns
+num_col <- temp %>%
+  select(`Wing Span (m)`, `Fuselage Length (m)`,
+         `Altitude (m)`, `Operational Life (years)`,
+         wing_to_fuselage)
+
+# Correlation matrix
+cor_matrix <- cor(num_col, use = "pairwise.complete.obs")
+
+# Heatmap
+corrplot(cor_matrix, method = "color", type = "upper",
+         tl.col = "black", tl.srt = 45,
+         addCoef.col = "black", number.cex = 0.7,
+         title = "Correlation Heatmap of Key Aerospace Variables",
+         mar = c(0,0,2,0))
+
+```
+
+## Correlational Heatmap
+
+Strong positive correlation between Wing Span and the Wing-to-Fuselage ratio (0.72).
+- Longer wings relative to fuselage strongly increase this ratio, reinforcing geometric design logic.
+
+Negative correlation between Fuselage Length and Operational Life (-0.65).
+- Longer fuselages may introduce structural stress points, reducing lifespan.
+
+Altitude shows only weak correlations with other variables.
+- Suggests altitude capability depends more on aerodynamic efficiency and material type than raw dimensions.
+
+Overall insight:
+Geometry (wings vs. fuselage) influences both durability and efficiency, but altitude performance seems decoupled, highlighting trade-offs in structural design.
+
+## ANOVA Test
+
+```{r}
+# ANOVA 1: Wing Span vs Material
+anova_wing <- aov(`Wing Span (m)` ~ `Material Type`, data = temp)
+summary(anova_wing)
+
+# ANOVA 2: Fuselage Length vs Material
+anova_fuse <- aov(`Fuselage Length (m)` ~ `Material Type`, data = temp)
+summary(anova_fuse)
+
+# ANOVA 3: Operational Life vs Material
+anova_life <- aov(`Operational Life (years)` ~ `Material Type`, data = temp)
+summary(anova_life)
+
+```
+
+## ANOVA Results
+- Even though the ANOVA tests suggest no statistically significant differences, this doesn’t mean materials are irrelevant.
+
+- In aerospace engineering, practical effects (like composites enabling lighter but stronger designs) may not always show up as statistically significant when averaged across many designs.
+
+- This highlights that geometry + design philosophy may have a bigger influence than just material category.
+
+##  Chi-Square Test
+```{r}
+# Chi-Square Test: Material Type vs Durability
+chisq_table <- table(temp$`Material Type`, temp$Durability)
+chisq_test <- chisq.test(chisq_table)
+
+chisq_table   # contingency table
+chisq_test    # chi-square results
+
+```
+
+## Chi-Square Test: Material Type vs Durability
+
+- Null Hypothesis (H₀): Durability distribution is independent of material type.
+
+- Test result: χ²(4) = 4.03, p = 0.40 → Fail to reject H₀.
+
+- Interpretation: No statistically significant association between material type and durability.
+
+## Interpretation:
+
+- Durability is influenced by multiple interacting factors — not just the material used.
+
+- Load distribution, geometry (wing-to-fuselage ratio), and vibration damping may have stronger effects than material type alone.
+
+- This aligns with aerospace engineering practice: material provides potential, but design execution defines actual durability.
+
+## Regression Analysis
+```{r}
+
+# Linear regression model: Predicting Operational Life
+reg_model <- lm(`Operational Life (years)` ~ `Wing Span (m)` + 
+                                              `Fuselage Length (m)` + 
+                                              `Altitude (m)` + 
+                                              `Material Type`, 
+                data = temp)
+
+# Model summary
+summary(reg_model)
+
+```
+
+## Interpretation
+- Structural variables (span, fuselage length, altitude, materials) do not strongly predict operational life.
+
+- The only marginally significant factor is fuselage length — longer fuselages slightly reduce lifespan.
+
+- This suggests that operational life is influenced more by other factors (e.g., maintenance cycles, environmental stressors, flight hours) that are not in the dataset.
+
+- Aerodynamic scaling (span/fuselage) plays a role in load distribution, but durability over decades depends more on real-world operations and fatigue cycles than just static geometry.
+
+- Material differences may matter more when combined with environmental/maintenance variables.
+
+## Conclusion
+
+- Our exploratory analysis demonstrated clear **geometry-material patterns**, such as composites enabling higher wing-to-fuselage ratios and metals clustering more conservatively.  
+
+- **Statistical testing (ANOVA, Chi-Square)** showed that while there are structural trends, there were **no statistically significant differences in durability or operational life across materials**.  
+
+## Conclusion
+
+- **Regression analysis** revealed that fuselage length has a small but significant negative effect on operational life, while wing span, altitude, and material type were not strong predictors.  
+
+- Taken together, the findings suggest that **structural design choices matter**, but **real-world operational life is shaped by broader factors** (maintenance, fatigue cycles, and environmental stresses) not captured in this dataset.  
+
+
+## Future Work
+
+- **Integrate operational data:** Flight hours, maintenance records, and environmental load histories to better model durability.  
+
+- **Expand statistical models:** Explore interaction effects (e.g., material × load distribution) and non-linear patterns.  
+
+- **Apply machine learning:** Use decision trees or random forests to highlight hidden factor importance beyond simple regression.  
+
+## Future Work
+
+- **Engineering interpretation:** Link data insights more explicitly with physical stress/strain models to balance analytical results with aeronautical design principles.  
+
+- Overall, this study illustrates the **value of data-driven analytics in aerospace design** — not to replace engineering judgment, but to **complement and validate it with evidence-based insights**.
+
